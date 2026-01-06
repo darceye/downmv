@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# --- Config ---
+TIMEOUT=15
+USER_AGENT="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+export LD_LIBRARY_PATH=$PREFIX/lib/openssl-1.1:$LD_LIBRARY_PATH
+
+error_exit() {
+    echo -e "\033[31m[Error]\033[0m $1" >&2
+    exit 1
+}
+
+if [ -z "$1" ]; then
+    echo "Usage: $0 <web URL>"
+    exit 1
+fi
+
+TARGET_URL="$1"
+
+# 1. Check Dependencies
+command -v wget >/dev/null 2>&1 || error_exit "wget not found."
+command -v grep >/dev/null 2>&1 || error_exit "grep not found."
+command -v sed >/dev/null 2>&1 || error_exit "sed not found."
+command -v N_m3u8DL-RE >/dev/null 2>&1 || error_exit "N_m3u8DL-RE not found."
+
+echo "Analyzing webpage: $TARGET_URL ..."
+
+# 2. Download content
+PAGE_CONTENT=$(wget -qO- --timeout=$TIMEOUT --tries=2 --user-agent="$USER_AGENT" "$TARGET_URL")
+if [ $? -ne 0 ]; then
+    error_exit "Web request failed, please check network or URL correctness."
+fi
+
+# 3. Extract and clean URLs
+# Step 1: sed 's/\//g' restores all \/ back to /
+# Step 2: grep -Eo outputs only the URL regex matching parts
+STREAMS=$(echo "$PAGE_CONTENT" | sed 's/\\//g' | grep -Eo 'https?://[^"'\'' ]+\.(m3u8|mpd)(\?[^"'\'' ]+)?' | sort -u)
+
+# 4. Results display
+if [ -z "$STREAMS" ]; then
+    echo "No .m3u8 or .mpd links found on the page."
+else
+    echo -e "\n\033[32m[Found the following streaming URLs]:\033[0m"
+    echo "--------------------------------------"
+    echo "$STREAMS"
+    echo "--------------------------------------"
+fi
+
+# 5. Download
+N_m3u8DL-RE $STREAMS
